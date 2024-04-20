@@ -8,6 +8,21 @@
 #include <string.h>
 #include <fsl_debug_console.h>
 
+#define ID0_MASK 	1 << 7
+#define ID0			7
+#define ID1_MASK 	1 << 6
+#define ID1			6
+#define ID2_MASK 	1 << 5
+#define ID2			5
+#define ID3_MASK 	1 << 4
+#define ID3			4
+#define ID4_MASK 	1 << 3
+#define ID4			3
+#define ID5_MASK 	1 << 2
+#define ID5			2
+#define P1_MASK		1 << 1
+#define P0_MASK		1 << 0
+
 #define master_stack_size_d	(256)
 #define master_task_priority (configMAX_PRIORITIES - 1)
 #define master_queue_size_d	(8)
@@ -151,7 +166,12 @@ static void master_task(void *pvParameters)
         	/* Build and send the LIN Header */
         	/* Put the ID into the header */
         	lin1p3_header[1] = ID<<2;
-        	/* TODO: put the parity bits */
+        	/* P0 parity */
+        	lin1p3_header[1] = (((ID0_MASK & lin1p3_header[1]) >> ID0) ^ ((ID1_MASK & lin1p3_header[1]) >> ID1) ^
+        			((ID2_MASK & lin1p3_header[1]) >> ID2) ^ ((ID4_MASK & lin1p3_header[1]) >> ID4)) | lin1p3_header[1];
+        	/* P1 parity */
+        	lin1p3_header[1] = ((((ID1_MASK & lin1p3_header[1]) >> ID1) ^ ((ID3_MASK & lin1p3_header[1]) >> ID3) ^
+        	        			((ID4_MASK & lin1p3_header[1]) >> ID4) ^ ((ID5_MASK & lin1p3_header[1]) >> ID5)) << 1) | lin1p3_header[1];
         	/* Init the message recevie buffer */
         	memset(lin1p3_message, 0, size_of_uart_buffer);
         	/* Calc the message size */
@@ -186,6 +206,8 @@ static void slave_task(void *pvParameters)
 	size_t n;
 	uint8_t  msg_idx;
 	uint8_t synch_break_byte = 0;
+	uint8_t p0;
+	uint8_t p1;
 
 	if(handle == NULL) {
 		vTaskSuspend(NULL);
@@ -203,56 +225,57 @@ static void slave_task(void *pvParameters)
     	/* Wait for header on the UART */
     	UART_RTOS_Receive(handle->uart_rtos_handle, lin1p3_header, size_of_lin_header_d, &n);
     	/* Check header */
-    	if(/*(lin1p3_header[0] != 0x00) &&*/
-    	   (lin1p3_header[0] != 0x55)) {
-    		/* TODO: Check ID parity bits */
-    		/* Header is not correct we are ignoring the header */
-    		continue;
-    	}
-    	/* Get the message ID */
-    	ID = (lin1p3_header[1] & 0xFC)>>2;
-    	/* If the header is correct, check if the message is in the table */
-    	msg_idx = 0;
-    	/*Look for the ID in the message table */
-    	while(msg_idx < lin1d3_max_supported_messages_per_node_cfg_d) {
-    		if(handle->config.messageTable[msg_idx].ID == ID) {
-    			break;
-    		}
-    		msg_idx++;
-    	}
-    	/* If the message ID was not found then ignore it */
-    	if(msg_idx == lin1d3_max_supported_messages_per_node_cfg_d) continue;
+    	p0 = (((ID0_MASK & lin1p3_header[1]) >> ID0) ^ ((ID1_MASK & lin1p3_header[1]) >> ID1) ^
+    			((ID2_MASK & lin1p3_header[1]) >> ID2) ^ ((ID4_MASK & lin1p3_header[1]) >> ID4));
+    	p1 = (((ID1_MASK & lin1p3_header[1]) >> ID1) ^ ((ID3_MASK & lin1p3_header[1]) >> ID3) ^
+    	    			((ID4_MASK & lin1p3_header[1]) >> ID4) ^ ((ID5_MASK & lin1p3_header[1]) >> ID5));
+    	/* Validate parity bits */
+    	if((p1 == ((P1_MASK & lin1p3_header[1]) >> 1)) && (p0 == (P0_MASK & lin1p3_header[1]))){
+			/* Get the message ID */
+			ID = (lin1p3_header[1] & 0xFC)>>2;
+			/* If the header is correct, check if the message is in the table */
+			msg_idx = 0;
+			/*Look for the ID in the message table */
+			while(msg_idx < lin1d3_max_supported_messages_per_node_cfg_d) {
+				if(handle->config.messageTable[msg_idx].ID == ID) {
+					break;
+				}
+				msg_idx++;
+			}
+			/* If the message ID was not found then ignore it */
+			if(msg_idx == lin1d3_max_supported_messages_per_node_cfg_d) continue;
 
-    	/* Calc the message size */
-    	switch(ID&0x03) {
-    		case 0x00: message_size = 2;
-    		break;
-    		case 0x01: message_size = 2;
-    		break;
-    		case 0x02: message_size = 4;
-    		break;
-    		case 0x03: message_size = 8;
-    		break;
-    	}
+			/* Calc the message size */
+			switch(ID&0x03) {
+				case 0x00: message_size = 2;
+				break;
+				case 0x01: message_size = 2;
+				break;
+				case 0x02: message_size = 4;
+				break;
+				case 0x03: message_size = 8;
+				break;
+			}
 
-    	message_size+=1;
-    	/* Init the message transmit buffer */
-    	memset(lin1p3_message, 0, size_of_uart_buffer);
+			message_size+=1;
+			/* Init the message transmit buffer */
+			memset(lin1p3_message, 0, size_of_uart_buffer);
 
-    	if(handle->config.messageTable[msg_idx].rx == 0) {
-        	/*If the message is in the table call the message callback */
-    		/* User shall fill the message */
-        	handle->config.messageTable[msg_idx].handler((void*)lin1p3_message);
-        	/* TODO: Add the checksum to the message */
-        	/* Send the message data */
-        	UART_RTOS_Send(handle->uart_rtos_handle, (uint8_t *)lin1p3_message, message_size);
-    	}
-    	else {
-        	/* Wait for Response on the UART */
-        	UART_RTOS_Receive(handle->uart_rtos_handle, lin1p3_message, message_size, &n);
-        	/* TODO: Check the checksum on the message */
-        	/*If the message is in the table call the message callback */
-        	handle->config.messageTable[msg_idx].handler((void*)lin1p3_message);
+			if(handle->config.messageTable[msg_idx].rx == 0) {
+				/*If the message is in the table call the message callback */
+				/* User shall fill the message */
+				handle->config.messageTable[msg_idx].handler((void*)lin1p3_message);
+				/* TODO: Add the checksum to the message */
+				/* Send the message data */
+				UART_RTOS_Send(handle->uart_rtos_handle, (uint8_t *)lin1p3_message, message_size);
+			}
+			else {
+				/* Wait for Response on the UART */
+				UART_RTOS_Receive(handle->uart_rtos_handle, lin1p3_message, message_size, &n);
+				/* TODO: Check the checksum on the message */
+				/*If the message is in the table call the message callback */
+				handle->config.messageTable[msg_idx].handler((void*)lin1p3_message);
+			}
     	}
     }
 }

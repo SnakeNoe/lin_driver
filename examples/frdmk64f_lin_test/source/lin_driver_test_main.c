@@ -58,9 +58,9 @@
 #define init_task_PRIORITY (configMAX_PRIORITIES - 2)
 #define test_task_heap_size_d	(192)
 
-#define app_message_id_1_d 1
+#define app_message_id_1_d 8
 #define app_message_id_2_d 2
-#define app_message_id_3_d 3
+#define app_message_id_3_d 12
 
 /*******************************************************************************
  * Prototypes
@@ -74,6 +74,8 @@ static void	message_3_callback_slave(void* message);
 static void	message_1_callback_local_slave(void* message);
 static void	message_2_callback_local_slave(void* message);
 static void	message_3_callback_local_slave(void* message);
+
+static uint8_t invertOrder(uint8_t bits);
 /*******************************************************************************
  * Variables
  ******************************************************************************/
@@ -166,9 +168,9 @@ static void test_task(void *pvParameters)
 	node_config.uartBase = LOCAL_SLAVE_UART;
 	node_config.srcclk = LOCAL_SLAVE_UART_CLK_FREQ;
 	memset(node_config.messageTable,0, (sizeof(node_config.messageTable[0])*lin1d3_max_supported_messages_per_node_cfg_d));
-	node_config.messageTable[0].ID = app_message_id_1_d;
-	node_config.messageTable[0].rx = 1;
-	node_config.messageTable[0].handler = message_1_callback_local_slave;
+	node_config.messageTable[3].ID = app_message_id_1_d;
+	node_config.messageTable[3].rx = 1;
+	node_config.messageTable[3].handler = message_1_callback_local_slave;
 	node_config.messageTable[1].ID = app_message_id_2_d;
 	node_config.messageTable[1].rx = 1;
 	node_config.messageTable[1].handler = message_2_callback_local_slave;
@@ -213,27 +215,31 @@ static void test_task(void *pvParameters)
 static void	message_1_callback_slave(void* message)
 {
 	uint8_t* message_data = (uint8_t*)message;
+
 	PRINTF("Slave got message 1 request\r\n");
-	message_data[0] = 1;
 }
 
 static void	message_2_callback_slave(void* message)
 {
 	uint8_t* message_data = (uint8_t*)message;
+
 	PRINTF("Slave got message 2 request\r\n");
+	message_data[0] = 33;
 }
 
 static void	message_3_callback_slave(void* message)
 {
 	uint8_t* message_data = (uint8_t*)message;
+
 	PRINTF("Slave got message 3 request\r\n");
 }
 
 static void	message_1_callback_local_slave(void* message)
 {
 	uint8_t* message_data = (uint8_t*)message;
+
 	PRINTF("Local slave got message 1 request\r\n");
-	PRINTF("Data: %d, %d, %d\r\n", message_data[0], message_data[1], message_data[2]);
+	PRINTF("Data from ID 1: %b, %b, %b, %d\r\n", message_data[0], message_data[1], message_data[2], message_data[3]);
 	if(*message_data == 1){
 		GPIO_PinWrite(BOARD_RED_GPIO, BOARD_RED_GPIO_PIN, 0U);
 		GPIO_PinWrite(BOARD_GREEN_GPIO, BOARD_GREEN_GPIO_PIN, 1U);
@@ -258,10 +264,22 @@ static void	message_1_callback_local_slave(void* message)
 
 static void	message_2_callback_local_slave(void* message){
 	uint8_t* message_data = (uint8_t*)message;
+
 	PRINTF("Local slave got message 2 request\r\n");
+	PRINTF("Data from ID 2: %b, %b, %b, %d\r\n", message_data[0], message_data[1], message_data[2], message_data[3]);
 }
 
 static void	message_3_callback_local_slave(void* message){
 	uint8_t* message_data = (uint8_t*)message;
+
 	PRINTF("Local slave got message 3 request\r\n");
+	PRINTF("Data from ID 3: %b, %b, %b, %d\r\n", message_data[0], message_data[1], message_data[2], message_data[3]);
+}
+
+static uint8_t invertOrder(uint8_t bits){
+	bits = (bits & 0xF0) >> 4 | (bits & 0x0F) << 4;
+	bits = (bits & 0xCC) >> 2 | (bits & 0x33) << 2;
+	bits = (bits & 0xAA) >> 1 | (bits & 0x55) << 1;
+
+	return bits;
 }

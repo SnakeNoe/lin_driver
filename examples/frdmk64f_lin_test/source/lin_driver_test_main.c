@@ -26,8 +26,7 @@
 /*******************************************************************************
  * Definitions
  ******************************************************************************/
-#define xJUST_MASTER
-#define DEBUG_LIN
+//#define MASTER
 
 #define BOARD_RED_GPIO     			BOARD_LED_RED_GPIO
 #define BOARD_RED_GPIO_PIN 			BOARD_LED_RED_GPIO_PIN
@@ -58,22 +57,24 @@
 #define init_task_PRIORITY (configMAX_PRIORITIES - 2)
 #define test_task_heap_size_d	(192)
 
-#define app_message_id_1_d 8
+#define app_message_id_1_d 1
 #define app_message_id_2_d 2
-#define app_message_id_3_d 12
+#define app_message_id_3_d 3
 
 /*******************************************************************************
  * Prototypes
  ******************************************************************************/
 static void test_task(void *pvParameters);
 
-static void	message_1_callback_slave(void* message);
-static void	message_2_callback_slave(void* message);
-static void	message_3_callback_slave(void* message);
-
+#ifdef MASTER
 static void	message_1_callback_local_slave(void* message);
 static void	message_2_callback_local_slave(void* message);
 static void	message_3_callback_local_slave(void* message);
+#else
+static void	message_1_callback_slave(void* message);
+static void	message_2_callback_slave(void* message);
+static void	message_3_callback_slave(void* message);
+#endif
 
 static uint8_t invertOrder(uint8_t bits);
 /*******************************************************************************
@@ -130,9 +131,14 @@ static void test_task(void *pvParameters)
 {
 	int error;
 	lin1d3_nodeConfig_t node_config;
+#ifdef MASTER
 	lin1d3_handle_t* master_handle;
-	lin1d3_handle_t* slave_handle;
 	lin1d3_handle_t* local_slave_handle;
+#else
+	lin1d3_handle_t* slave_handle;
+#endif
+
+#ifdef MASTER
 	/* Set Master Config */
 	node_config.type = lin1d3_master_nodeType;
 	node_config.bitrate = 9600;
@@ -142,7 +148,7 @@ static void test_task(void *pvParameters)
 	memset(node_config.messageTable,0, (sizeof(node_config.messageTable[0])*lin1d3_max_supported_messages_per_node_cfg_d));
 	/* Init Master node */
 	master_handle = lin1d3_InitNode(node_config);
-#if !defined(JUST_MASTER)
+#else
 	/* Set Slave Config */
 	node_config.type = lin1d3_slave_nodeType;
 	node_config.bitrate = 9600;
@@ -161,16 +167,18 @@ static void test_task(void *pvParameters)
 	node_config.messageTable[2].handler = message_3_callback_slave;
 	/* Init Slave Node*/
 	slave_handle = lin1d3_InitNode(node_config);
+#endif
 
+#ifdef MASTER
 	/* Set local Slave Config */
 	node_config.type = lin1d3_slave_nodeType;
 	node_config.bitrate = 9600;
 	node_config.uartBase = LOCAL_SLAVE_UART;
 	node_config.srcclk = LOCAL_SLAVE_UART_CLK_FREQ;
 	memset(node_config.messageTable,0, (sizeof(node_config.messageTable[0])*lin1d3_max_supported_messages_per_node_cfg_d));
-	node_config.messageTable[3].ID = app_message_id_1_d;
-	node_config.messageTable[3].rx = 1;
-	node_config.messageTable[3].handler = message_1_callback_local_slave;
+	node_config.messageTable[0].ID = app_message_id_1_d;
+	node_config.messageTable[0].rx = 1;
+	node_config.messageTable[0].handler = message_1_callback_local_slave;
 	node_config.messageTable[1].ID = app_message_id_2_d;
 	node_config.messageTable[1].rx = 1;
 	node_config.messageTable[1].handler = message_2_callback_local_slave;
@@ -181,13 +189,13 @@ static void test_task(void *pvParameters)
 	node_config.uart_rtos_handle = master_handle->uart_rtos_handle;
 	/* Init local Slave Node*/
 	local_slave_handle = lin1d3_InitNode(node_config);
-
 #endif
 
+#ifdef MASTER
 	if((NULL == master_handle)
-#if !defined(JUST_MASTER)
-		|| (NULL == slave_handle)
 		|| (NULL == local_slave_handle)
+#else
+	if((NULL == slave_handle)
 #endif
 	   ){
 		PRINTF(" Init failed!! \r\n");
@@ -199,24 +207,32 @@ static void test_task(void *pvParameters)
 
 	while (kStatus_Success == error)
     {
-#ifdef DEBUG_LIN
-    	vTaskDelay(200);
+#ifdef MASTER
     	lin1d3_masterSendMessage(master_handle, app_message_id_1_d);
-    	vTaskDelay(100);
+    	vTaskDelay(1000);
     	lin1d3_masterSendMessage(master_handle, app_message_id_2_d);
     	vTaskDelay(100);
-    	lin1d3_masterSendMessage(master_handle, app_message_id_3_d);
+    	//lin1d3_masterSendMessage(master_handle, app_message_id_3_d);
 #endif
     }
 
     vTaskSuspend(NULL);
 }
 
+#if !defined MASTER
 static void	message_1_callback_slave(void* message)
 {
 	uint8_t* message_data = (uint8_t*)message;
+	static uint8_t ledID = 0;
 
 	PRINTF("Slave got message 1 request\r\n");
+	message_data[0] = ledID;
+	if(ledID > 2){
+		ledID = 0;
+	}
+	else{
+		ledID++;
+	}
 }
 
 static void	message_2_callback_slave(void* message)
@@ -224,7 +240,7 @@ static void	message_2_callback_slave(void* message)
 	uint8_t* message_data = (uint8_t*)message;
 
 	PRINTF("Slave got message 2 request\r\n");
-	message_data[0] = 33;
+	message_data[0] = 2;
 }
 
 static void	message_3_callback_slave(void* message)
@@ -232,33 +248,36 @@ static void	message_3_callback_slave(void* message)
 	uint8_t* message_data = (uint8_t*)message;
 
 	PRINTF("Slave got message 3 request\r\n");
+	message_data[0] = 3;
 }
+#endif
 
+#ifdef MASTER
 static void	message_1_callback_local_slave(void* message)
 {
 	uint8_t* message_data = (uint8_t*)message;
 
 	PRINTF("Local slave got message 1 request\r\n");
-	PRINTF("Data from ID 1: %b, %b, %b, %d\r\n", message_data[0], message_data[1], message_data[2], message_data[3]);
-	if(*message_data == 1){
+	PRINTF("Data from ID 1: %b\r\n", message_data[0]);
+	if(message_data[0] == 0){
+		GPIO_PinWrite(BOARD_RED_GPIO, BOARD_RED_GPIO_PIN, 1U);
+		GPIO_PinWrite(BOARD_GREEN_GPIO, BOARD_GREEN_GPIO_PIN, 1U);
+		GPIO_PinWrite(BOARD_BLUE_GPIO, BOARD_BLUE_GPIO_PIN, 1U);
+	}
+	else if(message_data[0] == 1){
 		GPIO_PinWrite(BOARD_RED_GPIO, BOARD_RED_GPIO_PIN, 0U);
 		GPIO_PinWrite(BOARD_GREEN_GPIO, BOARD_GREEN_GPIO_PIN, 1U);
 		GPIO_PinWrite(BOARD_BLUE_GPIO, BOARD_BLUE_GPIO_PIN, 1U);
 	}
-	else if(*message_data == 2){
+	else if(message_data[0] == 2){
 		GPIO_PinWrite(BOARD_RED_GPIO, BOARD_RED_GPIO_PIN, 1U);
 		GPIO_PinWrite(BOARD_GREEN_GPIO, BOARD_GREEN_GPIO_PIN, 0U);
 		GPIO_PinWrite(BOARD_BLUE_GPIO, BOARD_BLUE_GPIO_PIN, 1U);
 	}
-	else if(*message_data == 3){
+	else if(message_data[0] == 3){
 		GPIO_PinWrite(BOARD_RED_GPIO, BOARD_RED_GPIO_PIN, 1U);
 		GPIO_PinWrite(BOARD_GREEN_GPIO, BOARD_GREEN_GPIO_PIN, 1U);
 		GPIO_PinWrite(BOARD_BLUE_GPIO, BOARD_BLUE_GPIO_PIN, 0U);
-	}
-	else{
-		GPIO_PinWrite(BOARD_RED_GPIO, BOARD_RED_GPIO_PIN, 1U);
-		GPIO_PinWrite(BOARD_GREEN_GPIO, BOARD_GREEN_GPIO_PIN, 1U);
-		GPIO_PinWrite(BOARD_BLUE_GPIO, BOARD_BLUE_GPIO_PIN, 1U);
 	}
 }
 
@@ -266,15 +285,14 @@ static void	message_2_callback_local_slave(void* message){
 	uint8_t* message_data = (uint8_t*)message;
 
 	PRINTF("Local slave got message 2 request\r\n");
-	PRINTF("Data from ID 2: %b, %b, %b, %d\r\n", message_data[0], message_data[1], message_data[2], message_data[3]);
 }
 
 static void	message_3_callback_local_slave(void* message){
 	uint8_t* message_data = (uint8_t*)message;
 
 	PRINTF("Local slave got message 3 request\r\n");
-	PRINTF("Data from ID 3: %b, %b, %b, %d\r\n", message_data[0], message_data[1], message_data[2], message_data[3]);
 }
+#endif
 
 static uint8_t invertOrder(uint8_t bits){
 	bits = (bits & 0xF0) >> 4 | (bits & 0x0F) << 4;

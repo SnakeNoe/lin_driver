@@ -166,14 +166,14 @@ static void master_task(void *pvParameters)
         	/* Build and send the LIN Header */
         	/* Put the ID into the header */
         	lin1p3_header[1] = ID<<2;
-        	/* TODO: Parity
+        	// TODO: Parity
         	// P0 parity
 			lin1p3_header[1] = (((ID0_MASK & lin1p3_header[1]) >> ID0) ^ ((ID1_MASK & lin1p3_header[1]) >> ID1) ^
         			((ID2_MASK & lin1p3_header[1]) >> ID2) ^ ((ID4_MASK & lin1p3_header[1]) >> ID4)) | lin1p3_header[1];
         	// P1 parity
         	lin1p3_header[1] = ((((ID1_MASK & lin1p3_header[1]) >> ID1) ^ ((ID3_MASK & lin1p3_header[1]) >> ID3) ^
         	        			((ID4_MASK & lin1p3_header[1]) >> ID4) ^ ((ID5_MASK & lin1p3_header[1]) >> ID5)) << 1) | lin1p3_header[1];
-        	*/
+
         	/* Init the message recevie buffer */
         	memset(lin1p3_message, 0, size_of_uart_buffer);
         	/* Calc the message size */
@@ -236,14 +236,14 @@ static void slave_task(void *pvParameters)
 
     	/* Wait for header on the UART */
     	UART_RTOS_Receive(handle->uart_rtos_handle, lin1p3_header, size_of_lin_header_d, &n);
-    	/* TODO: Parity check
+    	// TODO: Parity check
     	p0 = (((ID0_MASK & lin1p3_header[1]) >> ID0) ^ ((ID1_MASK & lin1p3_header[1]) >> ID1) ^
     			((ID2_MASK & lin1p3_header[1]) >> ID2) ^ ((ID4_MASK & lin1p3_header[1]) >> ID4));
     	p1 = (((ID1_MASK & lin1p3_header[1]) >> ID1) ^ ((ID3_MASK & lin1p3_header[1]) >> ID3) ^
     	    			((ID4_MASK & lin1p3_header[1]) >> ID4) ^ ((ID5_MASK & lin1p3_header[1]) >> ID5));
     	// Validate parity bits
     	if((p1 == ((P1_MASK & lin1p3_header[1]) >> 1)) && (p0 == (P0_MASK & lin1p3_header[1]))){
-    	*/
+
 			/* Get the message ID */
 			ID = (lin1p3_header[1] & 0xFC)>>2;
 			/* If the header is correct, check if the message is in the table */
@@ -278,22 +278,20 @@ static void slave_task(void *pvParameters)
 				/*If the message is in the table call the message callback */
 				/* User shall fill the message */
 				handle->config.messageTable[msg_idx].handler((void*)lin1p3_message);
-				/* TODO: Checksum
-				Checksum = (Byte1 + Byte2 + ... + Byten)%256
-				Where n = number of bytes (in LIN, 2, 4 or 8)
-
+				// TODO: Checksum
+				//Checksum = (Byte1 + Byte2 + ... + Byten)%256
+				//Where n = number of bytes (in LIN, 2, 4 or 8)
 				if(message_size == 2) lin1p3_message[2] = calculateChecksum(lin1p3_message, message_size);
 				else if(message_size == 4) lin1p3_message[4] = calculateChecksum(lin1p3_message, message_size);
 				else if(message_size == 8) lin1p3_message[8] = calculateChecksum(lin1p3_message, message_size);
-				*/
+
 				/* Send the message data */
 				UART_RTOS_Send(handle->uart_rtos_handle, (uint8_t *)lin1p3_message, message_size/* + 1 */);
 			}
 			else {
 				/* Wait for Response on the UART */
 				UART_RTOS_Receive(handle->uart_rtos_handle, lin1p3_message, message_size, &n);
-				/* TODO: Validate the checksum
-
+				// TODO: Validate the checksum
 				checksum = calculateChecksum(lin1p3_message, message_size);
 				if(message_size == 2) if(lin1p3_message[2] == checksum)
 					handle->config.messageTable[msg_idx].handler((void*)lin1p3_message);
@@ -302,11 +300,11 @@ static void slave_task(void *pvParameters)
 				else if(message_size == 8) if(lin1p3_message[8] == checksum)
 					handle->config.messageTable[msg_idx].handler((void*)lin1p3_message);
 				else ;
-				*/
+
 				/*If the message is in the table call the message callback */
 				//handle->config.messageTable[msg_idx].handler((void*)lin1p3_message);
 			}
-    	//}
+    	}
     }
 }
 

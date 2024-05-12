@@ -26,7 +26,7 @@
 /*******************************************************************************
  * Definitions
  ******************************************************************************/
-//#define MASTER
+#define MASTER
 
 #define BOARD_RED_GPIO     			BOARD_LED_RED_GPIO
 #define BOARD_RED_GPIO_PIN 			BOARD_LED_RED_GPIO_PIN
@@ -35,6 +35,7 @@
 #define BOARD_BLUE_GPIO    			BOARD_LED_BLUE_GPIO
 #define BOARD_BLUE_GPIO_PIN 		BOARD_LED_BLUE_GPIO_PIN
 
+#ifdef MASTER
 /* UART instance and clock */
 #define MASTER_UART UART3
 #define MASTER_UART_CLKSRC UART3_CLK_SRC
@@ -42,16 +43,18 @@
 #define MASTER_UART_RX_TX_IRQn UART3_RX_TX_IRQn
 
 /* UART instance and clock */
-#define LOCAL_SLAVE_UART UART3
-#define LOCAL_SLAVE_UART_CLKSRC UART3_CLK_SRC
-#define LOCAL_SLAVE_UART_CLK_FREQ CLOCK_GetFreq(UART3_CLK_SRC)
-#define LOCAL_SLAVE_UART_RX_TX_IRQn UART3_RX_TX_IRQn
+#define LOCAL_SLAVE_UART UART4
+#define LOCAL_SLAVE_UART_CLKSRC UART4_CLK_SRC
+#define LOCAL_SLAVE_UART_CLK_FREQ CLOCK_GetFreq(UART4_CLK_SRC)
+#define LOCAL_SLAVE_UART_RX_TX_IRQn UART4_RX_TX_IRQn
+#else
 
 /* UART instance and clock */
 #define SLAVE_UART UART4
 #define SLAVE_UART_CLKSRC UART4_CLK_SRC
 #define SLAVE_UART_CLK_FREQ CLOCK_GetFreq(UART4_CLK_SRC)
 #define SLAVE_UART_RX_TX_IRQn UART4_RX_TX_IRQn
+#endif
 
 /* Task priorities. */
 #define init_task_PRIORITY (configMAX_PRIORITIES - 2)
@@ -99,8 +102,12 @@ int main(void)
     BOARD_InitPins();
     BOARD_BootClockRUN();
     BOARD_InitDebugConsole();
+#ifdef MASTER
     NVIC_SetPriority(MASTER_UART_RX_TX_IRQn, 5);
+    //NVIC_SetPriority(LOCAL_SLAVE_UART_RX_TX_IRQn, 5);
+#else
     NVIC_SetPriority(SLAVE_UART_RX_TX_IRQn, 5);
+#endif
 
     /* Init LEDs GPIO. */
     GPIO_PinInit(BOARD_RED_GPIO, BOARD_RED_GPIO_PIN, &led_config);
@@ -110,7 +117,7 @@ int main(void)
     /* Clean LEDs */
     GPIO_PinWrite(BOARD_RED_GPIO, BOARD_RED_GPIO_PIN, 1U);
     GPIO_PinWrite(BOARD_GREEN_GPIO, BOARD_GREEN_GPIO_PIN, 1U);
-    GPIO_PinWrite(BOARD_BLUE_GPIO, BOARD_BLUE_GPIO_PIN, 1U);
+    GPIO_PinWrite(BOARD_BLUE_GPIO, BOARD_BLUE_GPIO_PIN, 0U);
 
     if (xTaskCreate(test_task, "test_task", test_task_heap_size_d, NULL, init_task_PRIORITY, NULL) != pdPASS)
     {
@@ -208,11 +215,14 @@ static void test_task(void *pvParameters)
 	while (kStatus_Success == error)
     {
 #ifdef MASTER
-    	lin1d3_masterSendMessage(master_handle, app_message_id_1_d);
-    	vTaskDelay(1000);
-    	lin1d3_masterSendMessage(master_handle, app_message_id_2_d);
-    	vTaskDelay(100);
-    	//lin1d3_masterSendMessage(master_handle, app_message_id_3_d);
+		while(1){
+			lin1d3_masterSendMessage(master_handle, app_message_id_1_d);
+			vTaskDelay(500);
+			//lin1d3_masterSendMessage(master_handle, app_message_id_2_d);
+			//vTaskDelay(500);
+			//lin1d3_masterSendMessage(master_handle, app_message_id_3_d);
+			//vTaskDelay(500);
+		}
 #endif
     }
 
@@ -225,8 +235,8 @@ static void	message_1_callback_slave(void* message)
 	uint8_t* message_data = (uint8_t*)message;
 	static uint8_t ledID = 0;
 
-	PRINTF("Slave got message 1 request\r\n");
-	message_data[0] = ledID;
+	PRINTF("\r\nSlave got message 1 request\r\n");
+	message_data[0] = 3;
 	if(ledID > 2){
 		ledID = 0;
 	}
@@ -239,7 +249,7 @@ static void	message_2_callback_slave(void* message)
 {
 	uint8_t* message_data = (uint8_t*)message;
 
-	PRINTF("Slave got message 2 request\r\n");
+	PRINTF("\r\nSlave got message 2 request\r\n");
 	message_data[0] = 2;
 }
 
@@ -247,7 +257,7 @@ static void	message_3_callback_slave(void* message)
 {
 	uint8_t* message_data = (uint8_t*)message;
 
-	PRINTF("Slave got message 3 request\r\n");
+	PRINTF("\r\nSlave got message 3 request\r\n");
 	message_data[0] = 3;
 }
 #endif
@@ -257,8 +267,8 @@ static void	message_1_callback_local_slave(void* message)
 {
 	uint8_t* message_data = (uint8_t*)message;
 
-	PRINTF("Local slave got message 1 request\r\n");
-	PRINTF("Data from ID 1: %b\r\n", message_data[0]);
+	PRINTF("\r\nLocal slave got message 1 request\r\n");
+	PRINTF("Data from message 1: %x\r\n", message_data);
 	if(message_data[0] == 0){
 		GPIO_PinWrite(BOARD_RED_GPIO, BOARD_RED_GPIO_PIN, 1U);
 		GPIO_PinWrite(BOARD_GREEN_GPIO, BOARD_GREEN_GPIO_PIN, 1U);
@@ -284,13 +294,15 @@ static void	message_1_callback_local_slave(void* message)
 static void	message_2_callback_local_slave(void* message){
 	uint8_t* message_data = (uint8_t*)message;
 
-	PRINTF("Local slave got message 2 request\r\n");
+	PRINTF("\r\nLocal slave got message 2 request\r\n");
+	PRINTF("Data from message 2: %x\r\n", message_data[0]);
 }
 
 static void	message_3_callback_local_slave(void* message){
 	uint8_t* message_data = (uint8_t*)message;
 
-	PRINTF("Local slave got message 3 request\r\n");
+	PRINTF("\r\nLocal slave got message 3 request\r\n");
+	PRINTF("Data from message 3: %x\r\n", message_data[0]);
 }
 #endif
 
